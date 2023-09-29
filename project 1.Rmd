@@ -1,0 +1,211 @@
+---
+title: "project 1"
+author: "Chenhui Qiu(Eileen)"
+date: "2023-09-26"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r,message=FALSE}
+library(tidyverse)
+library(statmod)
+library(ggplot2)
+```
+
+```{r}
+cdc0<-source("http://www.openintro.org/stat/data/cdc.R")
+cdc<-cdc0$value
+```
+
+```{r}
+cdc<-na.omit(cdc)
+cdc$genhlth<-as.factor(cdc$genhlth)
+cdc$hlthplan<-as.factor(cdc$hlthplan)
+#cdc$exerany<-as.factor(cdc$exerany)
+cdc$wtlose<-cdc$weight-cdc$wtdesire
+```
+
+There is no missing value.
+
+## EDA
+
+```{r}
+# numeric variables
+hist(cdc$age)
+hist(cdc$wtlose)
+```
+
+```{r}
+summary(cdc$wtlose)
+summary(cdc$age)
+sd(cdc$wtlose)
+sd(cdc$age)
+```
+```{r}
+# categorical variables
+knitr::kable(table(cdc$genhlth), col.names=c("General health", "Count") )
+knitr::kable(table(cdc$exerany), col.names=c("Exercise", "Count") )
+knitr::kable(table(cdc$hlthplan), col.names=c("Health coverage", "Count") )
+```
+
+```{r}
+# linear relationship
+logodds_plot <- function(data, num_bins, bin_method,
+                         x_name, y_name, grouping = NULL, 
+                         reg_formula = y ~ x){
+  
+  if(is.null(grouping)){
+    dat <- data.frame(x = data %>% pull(x_name), 
+                      y = data %>% pull(y_name),
+                      group = 1)
+  } else {
+    dat <- data.frame(x = data %>% pull(x_name), 
+                      y = data %>% pull(y_name),
+                      group = as.factor(data %>% pull(grouping)))
+  }
+  
+  if(bin_method == "equal_size"){
+    logodds_table <- dat %>%
+      drop_na() %>%
+      arrange(group, x) %>%
+      group_by(group) %>%
+      mutate(obs = y,
+             bin = rep(1:num_bins,
+                       each=ceiling(n()/num_bins))[1:n()]) %>%
+      group_by(bin, group) %>%
+      summarize(mean_x = mean(x),
+                prop = mean(c(obs, 0.5)),
+                num_obs = n()) %>%
+      ungroup() %>%
+      mutate(logodds = log(prop/(1 - prop)))
+  } else {
+    logodds_table <- dat %>%
+      drop_na() %>%
+      group_by(group) %>%
+      mutate(obs = y,
+             bin = cut(x, 
+                       breaks = num_bins,
+                       labels = FALSE)) %>%
+      group_by(bin, group) %>%
+      summarize(mean_x = mean(x),
+                prop = mean(c(obs, 0.5)),
+                num_obs = n()) %>%
+      ungroup() %>%
+      mutate(logodds = log(prop/(1 - prop)))
+  }
+  
+  if(is.null(grouping)){
+    logodds_table %>%
+      ggplot(aes(x = mean_x,
+                 y = logodds)) +
+      geom_point(size=2) +
+      geom_smooth(se=FALSE, method="lm", formula = reg_formula) +
+      theme_bw() +
+      labs(x = x_name,
+           y = "Empirical log odds") +
+      theme(text = element_text(size=15))
+  } else {
+    logodds_table %>%
+      ggplot(aes(x = mean_x,
+                 y = logodds,
+                 color = group,
+                 shape = group)) +
+      geom_point(size=2) +
+      geom_smooth(se=FALSE, method="lm", formula = reg_formula) +
+      theme_bw() +
+      labs(x = x_name,
+           y = "Empirical log odds",
+           color = grouping,
+           shape = grouping) +
+      theme(text = element_text(size=15))
+  }
+  
+}
+```
+
+```{r}
+logodds_plot(cdc, 50, "equal_size", "age", "exerany",
+             reg_formula = y ~ x)
+logodds_plot(cdc, 100, "equal_size", "wtlose", "exerany",
+             reg_formula = y ~ x)
+```
+
+```{r}
+cor(cdc[,c(8,10)])
+```
+
+```{r}
+# fitting the model
+cdc$exerany<-as.factor(cdc$exerany)
+m1<-glm(exerany~genhlth + hlthplan + age + wtlose,data=cdc,family=binomial)
+summary(m1)
+```
+
+```{r}
+## check assumptions
+summary(cooks.distance(m1))
+```
+
+```{r,message=FALSE}
+library(car)
+vif(m1)
+```
+
+```{r}
+resid<-qresid(m1)
+data.frame(x = cdc$age, residuals = qresid(m1)) %>%
+  ggplot(aes(x = x, y = residuals)) +
+  geom_point() +
+  geom_smooth() +
+  theme_bw()+labs(x="Age")
+data.frame(x = cdc$wtlose, residuals = qresid(m1)) %>%
+  ggplot(aes(x = x, y = residuals)) +
+  geom_point() +
+  geom_smooth() +
+  theme_bw()+labs(x="")
+```
+
+```{r}
+# Assess predictive accuracy
+
+table("Predicted" = ifelse(m1$fitted.values > 0.7, 1, 0), 
+      "Observed" = m1$y)
+```
+```{r}
+accuracy<-(2256+11487)/20000
+sensitivity<-11487/(11487+3427)
+specificity<-2256/(2256+2830)
+accuracy
+sensitivity
+specificity
+```
+```{r,message=FALSE}
+library(ROCR)
+library(tidyverse)
+pred <- prediction(m1$fitted.values, cdc$exerany)
+perf <- performance(pred,"tpr","fpr")
+performance(pred, "auc")@y.values
+data.frame(fpr = perf@x.values[[1]],
+tpr = perf@y.values[[1]]) |>
+ggplot(aes(x = fpr, y = tpr)) +
+geom_line(lwd=1.5) +
+geom_abline(slope = 1, intercept = 0, lty = 2,
+lwd = 1.5) +
+labs(x = "False positive rate (1 - Specificity)",
+y = "True positive rate (Sensitivity)") +
+theme_classic()
+```
+
+```{r}
+#hypothesis test
+test_stat<- -0.0061747/0.0006754
+test_stat
+```
+
+```{r}
+2*pnorm(abs(test_stat),lower.tail=F)
+```
+
