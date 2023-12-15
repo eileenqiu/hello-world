@@ -1,0 +1,121 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r,message=FALSE}
+library(tidyverse)
+library(statmod)
+library(ggplot2)
+library(car)
+```
+
+```{r}
+bike<-read.csv("C:/Users/dell/Desktop/london_merged.csv")
+bike<-na.omit(bike)
+```
+
+```{r}
+bike$is_weekend<-as.factor(bike$is_weekend)
+```
+
+```{r}
+summary(bike$t2)
+summary(bike$hum)
+summary(bike$wind_speed)
+```
+
+```{r}
+m1 <- glm(cnt ~ t2+hum+wind_speed+is_weekend, data = bike, family = poisson)
+summary(m1)
+```
+
+```{r}
+summary(cooks.distance(m1))
+vif(m1)
+```
+
+```{r}
+data.frame(x = bike$t2, resids = qresid(m1)) %>%
+  ggplot(aes(x = bike$t2, y = resids)) +
+  geom_point() +
+  geom_smooth() +
+  labs(x = "Temperature", y = "Quantile residuals",
+       title = "Poisson regression") +
+  theme_bw()
+```
+
+```{r}
+data.frame(x = bike$hum, resids = qresid(m1)) %>%
+  ggplot(aes(x = bike$hum, y = resids)) +
+  geom_point() +
+  geom_smooth() +
+  labs(x = "Humidity", y = "Quantile residuals",
+       title = "Poisson regression")+xlim(40,100) +
+  theme_bw()
+```
+
+```{r}
+data.frame(x = bike$wind_speed, resids = qresid(m1)) %>%
+  ggplot(aes(x = bike$wind_speed, y = resids)) +
+  geom_point() +
+  geom_smooth() +
+  labs(x = "Wind Speed", y = "Quantile residuals",
+       title = "Poisson regression") +
+  theme_bw()
+```
+```{r}
+pchisq(m1$deviance, m1$df.residual, lower.tail=F)
+```
+
+```{r}
+m2 <- glm(cnt ~ t2+hum+wind_speed+is_weekend, data = bike,family = "quasipoisson")
+summary(m2)
+```
+
+```{r}
+summary(cooks.distance(m2))
+vif(m2)
+```
+
+
+```{r}
+data.frame(x = bike$t2, resids = qresid(m2)) %>%
+  ggplot(aes(x = bike$t2, y = resids)) +
+  geom_point() +
+  geom_smooth() +
+  labs(x = "X", y = "Quantile residuals",
+       title = "Poisson regression") +
+  theme_bw()
+```
+
+```{r}
+data.frame(x = bike$hum, resids = qresid(m2)) %>%
+  ggplot(aes(x = bike$hum, y = resids)) +
+  geom_point() +
+  geom_smooth() +
+  labs(x = "X", y = "Quantile residuals",
+       title = "Poisson regression") +xlim(40,100)+
+  theme_bw()
+```
+
+
+```{r}
+data.frame(x = bike$wind_speed, resids = qresid(m2)) %>%
+  ggplot(aes(x = bike$wind_speed, y = resids)) +
+  geom_point() +
+  geom_smooth() +
+  labs(x = "X", y = "Quantile residuals",
+       title = "Poisson regression") +
+  theme_bw()
+```
+
+
+```{r}
+# hypothesis testing
+0.0299859/((3.804e-05)*sqrt(830.4214))
+```
+
+```{r}
+pt(27.35441,17409,lower.tail = FALSE)+pt(-27.35441,17409,lower.tail = TRUE)
+```
+
